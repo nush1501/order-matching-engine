@@ -1,17 +1,19 @@
 from flask import Blueprint, request, jsonify
-from app.order_service.models import Order
-from app.matching_service.matcher import order_book
-from app.websocket_service import socketio
 import logging
+
+from app.matching_service.matcher import Order, order_book
 
 order_bp = Blueprint('order_service', __name__)
 
 logger = logging.getLogger(__name__)
 
+
 @order_bp.route('/orders', methods=['POST'])
-def place_order():
+def place_order(db_session):
     try:
         data = request.json
+        print('Hi')
+        print(data)
         quantity = data.get('quantity')
         price = data.get('price')
         side = data.get('side')
@@ -26,14 +28,11 @@ def place_order():
 
         # Create order
         order = Order(quantity=quantity, price=price, side=side)
-        db.session.add(order)
-        db.session.commit()
+        db_session.add(order)
+        db_session.commit()
 
         # Place order in order book
         order_book.place_order(order)
-
-        # Emit order placed event
-        socketio.emit('order_placed', order.to_dict())
 
         return jsonify({'order_id': order.id}), 201
     except ValueError as e:
@@ -42,6 +41,7 @@ def place_order():
     except Exception as e:
         logger.error('Failed to place order: %s', str(e))
         return jsonify({'error': 'Internal server error'}), 500
+
 
 @order_bp.route('/orders/<int:order_id>', methods=['GET'])
 def fetch_order(order_id):
@@ -58,8 +58,9 @@ def fetch_order(order_id):
         logger.error('Failed to fetch order: %s', str(e))
         return jsonify({'error': 'Internal server error'}), 500
 
+
 @order_bp.route('/orders/<int:order_id>', methods=['PUT'])
-def modify_order(order_id):
+def modify_order(order_id, db_session):
     try:
         data = request.json
         updated_price = data.get('updated_price')
@@ -69,7 +70,7 @@ def modify_order(order_id):
             raise ValueError('Order not found')
 
         order.price = updated_price
-        db.session.commit()
+        db_session.commit()
 
         # Update order in order book
         order_book.modify_order(order)
@@ -82,15 +83,16 @@ def modify_order(order_id):
         logger.error('Failed to modify order: %s', str(e))
         return jsonify({'error': 'Internal server error'}), 500
 
+
 @order_bp.route('/orders/<int:order_id>', methods=['DELETE'])
-def cancel_order(order_id):
+def cancel_order(order_id, db_session):
     try:
         order = Order.query.get(order_id)
         if not order:
             raise ValueError('Order not found')
 
-        db.session.delete(order)
-        db.session.commit()
+        db_session.delete(order)
+        db_session.commit()
 
         # Cancel order in order book
         order_book.cancel_order(order)
@@ -102,6 +104,7 @@ def cancel_order(order_id):
     except Exception as e:
         logger.error('Failed to cancel order: %s', str(e))
         return jsonify({'error': 'Internal server error'}), 500
+
 
 @order_bp.route('/orders', methods=['GET'])
 def fetch_all_orders():
