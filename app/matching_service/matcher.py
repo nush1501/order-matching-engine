@@ -1,75 +1,107 @@
-class Order:
-    """
-    Represents an order in the order book.
-    """
+from collections import defaultdict
+from bintrees import RBTree
 
-    def __init__(self, order_id, user_id, side, price, quantity):
-        self.id = order_id
-        self.user_id = user_id
-        self.side = side  # 'buy' or 'sell'
-        self.price = price
-        self.quantity = quantity
+
+class PriceLevelIndex:
+    def __init__(self):
+        self.index = defaultdict(list)
+
+    def add_order(self, price, node):
+        self.index[price].append(node)
+
+    def remove_order(self, price, node):
+        self.index[price].remove(node)
+        if not self.index[price]:
+            del self.index[price]
+
+    def get_nodes_at_price(self, price):
+        return self.index.get(price, [])
+
 
 class OrderBook:
-    """
-    Implements an order book for buy and sell orders.
-    """
-
     def __init__(self):
-        self.buy_orders = []  # List of buy orders (highest price first)
-        self.sell_orders = []  # List of sell orders (lowest price first)
+        self.buy_orders = RBTree()  # Red-Black Tree for buy orders (price as key)
+        self.sell_orders = RBTree()  # Red-Black Tree for sell orders (price as key)
+        self.price_index = PriceLevelIndex()
 
     def place_order(self, order):
-        """
-        Places an order in the appropriate side of the order book.
-        """
-
-        if order.side == 'buy':
-            # Insert order at appropriate position (highest price first)
-            for i, existing_order in enumerate(self.buy_orders):
-                if order.price >= existing_order.price:
-                    self.buy_orders.insert(i, order)
-                    return
-            self.buy_orders.append(order)
-        else:  # Sell order
-            # Insert order at appropriate position (lowest price first)
-            for i, existing_order in enumerate(self.sell_orders):
-                if order.price <= existing_order.price:
-                    self.sell_orders.insert(i, order)
-                    return
-            self.sell_orders.append(order)
+        tree = self.buy_orders if order.side == 1 else self.sell_orders
+        node = tree.insert(order.price, order)
+        self.price_index.add_order(order.price, node)
 
     def match_orders(self):
-        """
-        Matches buy and sell orders based on price and quantity.
-        """
-
         trades = []
         while self.buy_orders and self.sell_orders:
-            # Get top buy and sell orders
-            buy_order = self.buy_orders[-1]
-            sell_order = self.sell_orders[0]
+            buy_price = self.buy_orders.min_key()
+            sell_price = self.sell_orders.min_key()
 
-            # Check if prices match or buy price is higher than sell price
-            if buy_order.price >= sell_order.price:
-                # Calculate trade quantity (min of buy and sell order quantities)
-                trade_quantity = min(buy_order.quantity, sell_order.quantity)
+            if buy_price >= sell_price:
+                buy_orders = self.price_index.get_nodes_at_price(buy_price)
+                sell_orders = self.price_index.get_nodes_at_price(sell_price)
 
-                # Update order quantities
-                buy_order.quantity -= trade_quantity
-                sell_order.quantity -= trade_quantity
+                for buy_order in buy_orders:
+                    for sell_order in sell_orders:
+                        if self.match_order_pair(buy_order, sell_order, trades):
+                            break  # Stop iterating once a match is found
 
-                # Create trade object
-                trade = Trade(buy_order_id=buy_order.id, sell_order_id=sell_order.id, price=sell_order.price, quantity=trade_quantity)
-                trades.append(trade)
-
-                # Remove fully executed orders
-                if buy_order.quantity == 0:
-                    self.buy_orders.pop()
-                if sell_order.quantity == 0:
-                    self.sell_orders.pop(0)
+            # Remove empty price levels from the index
+            if not self.buy_orders.get(buy_price):
+                self.buy_orders.delete(buy_price)
+                self.price_index.remove_order(buy_price, None)
+            if not self.sell_orders.get(sell_price):
+                self.sell_orders.delete(sell_price)
+                self.price_index.remove_order(sell_price, None)
 
         return trades
+
+    def match_order_pair(self, buy_order, sell_order, trades):
+        if buy_order.price < sell_order.price:
+            return False
+
+        trade_quantity = min(buy_order.quantity, sell_order.quantity)
+        buy_order.quantity -= trade_quantity
+        sell_order.quantity -= trade_quantity
+
+        # Handle order cancellation (if either quantity becomes 0)
+        if buy_order.quantity == 0:
+            self.remove_order(buy_order)
+        if sell_order.quantity == 0:
+            self.remove_order(sell_order)
+
+        trade = Trade(buy_order_id=buy_order.id, sell_order_id=sell_order.id, price=sell_order.price,
+                      quantity=trade_quantity)
+        trades.append(trade)
+        return True
+
+    def remove_order(self, order):
+        tree = self.buy_orders if order.side == 1 else self.sell_orders
+        node = tree.delete(order.price, order)
+        self.price_index.remove_order(order.price, node)
+
+    def modify_order(self, order):
+        """
+        Modifies the price of an existing order in the order book.
+
+        Args:
+            order (Order): The order object with updated price.
+        """
+
+        # Check if order exists in the correct tree (buy/sell)
+        tree = self.buy_orders if order.side == 1 else self.sell_orders
+        if order not in tree:
+            raise ValueError(f"Order with ID {order.id} not found in {tree.name} orders")
+
+        # Update order price and re-insert into the tree
+        old_price = order.price
+        order.price = new_price  # assuming you have the new price elsewhere
+
+        # Remove the order from the current price level
+        self.price_index.remove_order(old_price, tree.get(old_price, None))
+
+        # Re-insert the order with the updated price
+        tree.insert(order.price, order)
+        self.price_index.add_order(order.price, tree[order.price])
+
 
 class Trade:
     """
@@ -81,19 +113,3 @@ class Trade:
         self.sell_order_id = sell_order_id
         self.price = price
         self.quantity = quantity
-
-# Example usage
-order_book = OrderBook()
-
-order_1 = Order(1, 101, 'buy', 100, 10)
-order_2 = Order(2, 102, 'sell', 98, 5)
-order_3 = Order(3, 103, 'buy', 102, 20)
-
-order_book.place_order(order_1)
-order_book.place_order(order_2)
-order_book.place_order(order_3)
-
-trades = order_book.match_orders()
-
-for trade in trades:
-    print(f"Trade: Buy Order ID: {trade.buy_order_id}, Sell Order ID: {trade.sell_order_id}, Price: {trade.price}, Quantity: {trade.quantity}")

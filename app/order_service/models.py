@@ -1,4 +1,3 @@
-# app/order_service/models.py
 from sqlalchemy import Column, Integer, Float, Boolean, String
 
 class Order(db.Model):

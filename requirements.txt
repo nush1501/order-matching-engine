@@ -1,4 +1,7 @@
-flask
+flask~=3.0.3
 dotenv
 
 
+
+SQLAlchemy~=2.0.36
+bintrees~=2.2.0

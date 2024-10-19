@@ -1,7 +1,11 @@
-from flask import Blueprint, request, jsonify
+"""
+This module defines the API endpoints for the order matching engine.
+It handles creating, fetching, modifying, and canceling orders.
+"""
 import logging
-
-from app.matching_service.matcher import Order, order_book
+from flask import Blueprint, request, jsonify
+from ..matching_service.matcher import OrderBook
+from models import Order
 
 order_bp = Blueprint('order_service', __name__)
 
@@ -26,13 +30,10 @@ def place_order(db_session):
         if side is None or side not in (1, -1):
             raise ValueError('Invalid side')
 
-        # Create order
-        order = Order(quantity=quantity, price=price, side=side)
-        db_session.add(order)
-        db_session.commit()
-
-        # Place order in order book
-        order_book.place_order(order)
+        with db_session.begin():
+            order = Order(quantity=quantity, price=price, side=side)
+            db_session.add(order)
+            OrderBook.place_order(order)
 
         return jsonify({'order_id': order.id}), 201
     except ValueError as e:
@@ -73,12 +74,14 @@ def modify_order(order_id, db_session):
         db_session.commit()
 
         # Update order in order book
-        order_book.modify_order(order)
+        OrderBook.modify_order(order)
 
         return jsonify({'success': True}), 200
     except ValueError as e:
         logger.error('Order not found or invalid update: %s', str(e))
         return jsonify({'error': str(e)}), 400
+    except AttributeError:
+        logger.warning('Order book does not support order modification yet')
     except Exception as e:
         logger.error('Failed to modify order: %s', str(e))
         return jsonify({'error': 'Internal server error'}), 500
@@ -95,7 +98,7 @@ def cancel_order(order_id, db_session):
         db_session.commit()
 
         # Cancel order in order book
-        order_book.cancel_order(order)
+        OrderBook.remove_order(order)
 
         return jsonify({'success': True}), 200
     except ValueError as e:
