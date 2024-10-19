@@ -1,2 +1,1 @@
-FLASK_APP=app/order_service
 FLASK_ENV=development

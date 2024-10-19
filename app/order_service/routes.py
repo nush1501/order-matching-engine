@@ -4,8 +4,9 @@ It handles creating, fetching, modifying, and canceling orders.
 """
 import logging
 from flask import Blueprint, request, jsonify
-from ..matching_service.matcher import OrderBook
-from models import Order
+
+from app.matching_service.matcher import OrderBook
+from app.order_service.models import Order
 
 order_bp = Blueprint('order_service', __name__)
 
