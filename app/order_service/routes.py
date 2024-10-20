@@ -5,8 +5,8 @@ It handles creating, fetching, modifying, and canceling orders.
 import logging
 from flask import Blueprint, request, jsonify
 
-from app.matching_service.matcher import OrderBook
-from app.order_service.models import Order
+from ..matching_service.matcher import OrderBook
+from .models import Order
 
 order_bp = Blueprint('order_service', __name__)
 
@@ -15,6 +15,22 @@ logger = logging.getLogger(__name__)
 
 @order_bp.route('/orders', methods=['POST'])
 def place_order(db_session):
+    """
+        Place a new order in the order book.
+
+        This endpoint handles the creation of a new order. The request body must
+        contain 'quantity', 'price', and 'side' (buy or sell). The function
+        validates the input, saves the order to the database, and adds it to
+        the order book.
+
+        Args:
+            db_session: The active database session.
+
+        Returns:
+            JSON response containing the order ID and a status code of 201 if successful.
+            If there is an input validation error, returns a JSON error message with a 400 status.
+            In case of any other error, returns a 500 status.
+        """
     try:
         data = request.json
         print('Hi')
@@ -34,7 +50,8 @@ def place_order(db_session):
         with db_session.begin():
             order = Order(quantity=quantity, price=price, side=side)
             db_session.add(order)
-            OrderBook.place_order(order)
+            order_book = OrderBook()  # Create an instance of OrderBook
+            order_book.place_order(order)
 
         return jsonify({'order_id': order.id}), 201
     except ValueError as e:
@@ -47,6 +64,20 @@ def place_order(db_session):
 
 @order_bp.route('/orders/<int:order_id>', methods=['GET'])
 def fetch_order(order_id):
+    """
+       Fetch an existing order by its ID.
+
+       This endpoint retrieves a specific order based on the provided order ID.
+       It queries the database for the order and returns the order details.
+
+       Args:
+           order_id (int): The unique identifier of the order to fetch.
+
+       Returns:
+           JSON response with the order details and a 200 status code if found.
+           If the order is not found, returns a 404 status with an error message.
+           In case of any other error, returns a 500 status.
+       """
     try:
         order = Order.query.get(order_id)
         if not order:
@@ -63,6 +94,22 @@ def fetch_order(order_id):
 
 @order_bp.route('/orders/<int:order_id>', methods=['PUT'])
 def modify_order(order_id, db_session):
+    """
+        Modify an existing order's price.
+
+        This endpoint allows updating the price of an existing order. It fetches
+        the order by its ID, modifies the price, updates the database, and reflects
+        the change in the order book.
+
+        Args:
+            order_id (int): The ID of the order to modify.
+            db_session: The active database session.
+
+        Returns:
+            JSON response with success status and a 200 status if the order is modified successfully.
+            If the order is not found or there is an invalid update, returns a 400 status.
+            In case of any other error, returns a 500 status.
+        """
     try:
         data = request.json
         updated_price = data.get('updated_price')
@@ -75,7 +122,8 @@ def modify_order(order_id, db_session):
         db_session.commit()
 
         # Update order in order book
-        OrderBook.modify_order(order)
+        order_book = OrderBook()  # Create an instance of OrderBook
+        order_book.modify_order(order, updated_price)
 
         return jsonify({'success': True}), 200
     except ValueError as e:
@@ -83,6 +131,7 @@ def modify_order(order_id, db_session):
         return jsonify({'error': str(e)}), 400
     except AttributeError:
         logger.warning('Order book does not support order modification yet')
+        return jsonify({'error': 'Order book modification not supported'}), 400
     except Exception as e:
         logger.error('Failed to modify order: %s', str(e))
         return jsonify({'error': 'Internal server error'}), 500
@@ -90,6 +139,21 @@ def modify_order(order_id, db_session):
 
 @order_bp.route('/orders/<int:order_id>', methods=['DELETE'])
 def cancel_order(order_id, db_session):
+    """
+        Cancel an existing order.
+
+        This endpoint allows for canceling an order by its ID. It removes the
+        order from both the database and the order book.
+
+        Args:
+            order_id (int): The ID of the order to cancel.
+            db_session: The active database session.
+
+        Returns:
+            JSON response with success status and a 200 status if the order is canceled successfully.
+            If the order is not found, returns a 404 status with an error message.
+            In case of any other error, returns a 500 status.
+        """
     try:
         order = Order.query.get(order_id)
         if not order:
@@ -99,7 +163,8 @@ def cancel_order(order_id, db_session):
         db_session.commit()
 
         # Cancel order in order book
-        OrderBook.remove_order(order)
+        order_book = OrderBook()  # Create an instance of OrderBook
+        order_book.remove_order(order)
 
         return jsonify({'success': True}), 200
     except ValueError as e:
@@ -112,6 +177,16 @@ def cancel_order(order_id, db_session):
 
 @order_bp.route('/orders', methods=['GET'])
 def fetch_all_orders():
+    """
+        Fetch all orders.
+
+        This endpoint retrieves all orders from the database and returns them
+        in a list format.
+
+        Returns:
+            JSON response containing a list of all orders and a 200 status code.
+            In case of an error, returns a 500 status.
+        """
     try:
         orders = Order.query.all()
         return jsonify([order.to_dict() for order in orders]), 200

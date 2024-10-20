@@ -1,3 +1,16 @@
+"""
+This module implements an order book for an order matching engine.
+
+It defines classes for managing price levels, placing and modifying orders,
+and matching buy and sell orders. The `OrderBook` class uses a Red-Black Tree
+to maintain orders and supports operations such as placing, modifying,
+removing, and matching orders.
+
+Classes:
+    - PriceLevelIndex: Manages price levels and associated orders.
+    - OrderBook: Handles order placement, modification, and matching.
+    - Trade: Represents a trade transaction between buy and sell orders.
+"""
 from collections import defaultdict
 from bintrees import RBTree
 
@@ -19,17 +32,27 @@ class PriceLevelIndex:
 
 
 class OrderBook:
+    """
+       Class representing an order book for managing buy and sell orders.
+
+       Attributes:
+           buy_orders (RBTree): Red-Black Tree for buy orders.
+           sell_orders (RBTree): Red-Black Tree for sell orders.
+           price_index (PriceLevelIndex): Manages the index of price levels.
+       """
     def __init__(self):
         self.buy_orders = RBTree()  # Red-Black Tree for buy orders (price as key)
         self.sell_orders = RBTree()  # Red-Black Tree for sell orders (price as key)
         self.price_index = PriceLevelIndex()
 
     def place_order(self, order):
+        """Place a new order in the order book."""
         tree = self.buy_orders if order.side == 1 else self.sell_orders
         node = tree.insert(order.price, order)
         self.price_index.add_order(order.price, node)
 
     def match_orders(self):
+        """Match buy and sell orders based on their prices."""
         trades = []
         while self.buy_orders and self.sell_orders:
             buy_price = self.buy_orders.min_key()
@@ -55,6 +78,7 @@ class OrderBook:
         return trades
 
     def match_order_pair(self, buy_order, sell_order, trades):
+        """Match a single pair of buy and sell orders."""
         if buy_order.price < sell_order.price:
             return False
 
@@ -74,16 +98,18 @@ class OrderBook:
         return True
 
     def remove_order(self, order):
+        """Remove an order from the order book."""
         tree = self.buy_orders if order.side == 1 else self.sell_orders
         node = tree.delete(order.price, order)
         self.price_index.remove_order(order.price, node)
 
-    def modify_order(self, order):
+    def modify_order(self, order, new_price):
         """
         Modifies the price of an existing order in the order book.
 
         Args:
             order (Order): The order object with updated price.
+            new_price (float): The new price to assign to the order.
         """
 
         # Check if order exists in the correct tree (buy/sell)
@@ -93,7 +119,7 @@ class OrderBook:
 
         # Update order price and re-insert into the tree
         old_price = order.price
-        order.price = new_price  # assuming you have the new price elsewhere
+        order.price = new_price
 
         # Remove the order from the current price level
         self.price_index.remove_order(old_price, tree.get(old_price, None))

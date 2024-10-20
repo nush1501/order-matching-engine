@@ -7,15 +7,10 @@ It provides API endpoints for placing, fetching, modifying, and canceling orders
 The application leverages blueprints for modularity and organization.
 The `order_service` blueprint defines the API endpoints for order management.
 """
-from flask import Flask
+from app import create_app
 
-from app.order_service.routes import order_bp
-
-app = Flask(__name__)
-
-# Register the blueprint
-
-app.register_blueprint(order_bp, url_prefix='/orders')
+# Create an app instance using the factory function
+app = create_app()
 
 if __name__ == "__main__":
     app.run(debug=True)
