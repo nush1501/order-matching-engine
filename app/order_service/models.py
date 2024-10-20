@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, Float, Boolean, String
 
+
 class Order(db.Model):
     id = Column(Integer, primary_key=True)
     quantity = Column(Integer, nullable=False)
